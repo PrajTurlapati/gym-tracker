@@ -1,6 +1,6 @@
-const WORKOUT_PLAN = {
-  Monday: {
-    label: "Chest & Triceps & Abs",
+const WORKOUT_TYPES = {
+  "Chest/Triceps": {
+    label: "Chest & Triceps",
     exercises: [
       { name: "Incline Dumbbell Press", sets: 6, targetReps: "8-10" },
       { name: "Normal Chest Flies", sets: 4, targetReps: "8-10" },
@@ -8,11 +8,10 @@ const WORKOUT_PLAN = {
       { name: "Machine/Bar Flat Chest Press", sets: 5, targetReps: "8-10" },
       { name: "Dips", sets: 4, targetReps: "8-10", bodyweight: true },
       { name: "Tricep Machine 1", sets: 3, targetReps: "8" },
-      { name: "Abs Workout", sets: 4, targetReps: "11-18" },
     ],
   },
-  Tuesday: {
-    label: "Back & Biceps & Abs",
+  "Back/Biceps": {
+    label: "Back & Biceps",
     exercises: [
       { name: "Lat Pull Down", sets: 6, targetReps: "8-10" },
       { name: "1 Arm Cable Pull Machine", sets: 2, targetReps: "8", note: "each arm" },
@@ -21,10 +20,9 @@ const WORKOUT_PLAN = {
       { name: "Pull Ups", sets: 4, targetReps: "6", bodyweight: true },
       { name: "Bicep/Hammer Curl Machine", sets: 6, targetReps: "10" },
       { name: "Straight Arm Pull Down", sets: 3, targetReps: "10" },
-      { name: "Abs Workout", sets: 4, targetReps: "11-18" },
     ],
   },
-  Wednesday: {
+  Legs: {
     label: "Legs",
     exercises: [
       { name: "Hack Saw Squats Round 1", sets: 3, targetReps: "6-8" },
@@ -36,25 +34,33 @@ const WORKOUT_PLAN = {
       { name: "Outer Leg Machine", sets: 2, targetReps: "10" },
     ],
   },
-  Thursday: { label: "Rest Day", exercises: [] },
-  Friday: {
-    label: "Shoulder & Full Body",
+  "Shoulders & Legs": {
+    label: "Shoulders & Legs",
     exercises: [
       { name: "Shoulder Press Machine", sets: 4, targetReps: "9-11" },
       { name: "Dumbbell Lateral Raises", sets: 3, targetReps: "10" },
       { name: "Rear Delt Machine", sets: 4, targetReps: "8-10", note: "each arm" },
       { name: "Chest Fly Machine", sets: 4, targetReps: "8-10" },
       { name: "Leg Press Machine", sets: 5, targetReps: "10-12" },
-      { name: "Ab Workout 1", sets: 3, targetReps: "13-15", note: "both sides" },
       { name: "Cable Lateral Raises", sets: 2, targetReps: "10", note: "each arm" },
       { name: "Cable Chest/back Workouts", sets: 6, targetReps: "12" },
     ],
   },
-  Saturday: { label: "Rest Day", exercises: [] },
-  Sunday: { label: "Rest Day", exercises: [] },
+  Rest: { label: "Rest Day", exercises: [] },
 };
 
-const DAY_NAMES = Object.keys(WORKOUT_PLAN);
+const WORKOUT_TYPE_NAMES = Object.keys(WORKOUT_TYPES);
+
+const ABS_BASE_NAME = "Abs Workout";
+const ABS_EXERCISE_DEF = { targetReps: "11-18", initialSets: 2 };
+
+const RUN_FIELDS = [
+  { key: "duration", label: "min", step: "1", min: "0" },
+  { key: "speed", label: "mph", step: "0.5", min: "2", max: "8" },
+  { key: "incline", label: "incline", step: "0.1", min: "2", max: "10" },
+];
+
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const DRAFTS_KEY = "gymTrackerDrafts";
 const HISTORY_KEY = "gymTrackerHistory";
 const FOLDERS_KEY = "gymTrackerFolders";
@@ -135,24 +141,80 @@ function saveFolders(folders) {
 }
 
 function emptyDraftFor(day) {
-  const plan = WORKOUT_PLAN[day];
-  const exercises = {};
-  plan.exercises.forEach((ex) => {
-    exercises[ex.name] = Array.from({ length: DEFAULT_SETS }, () => ({ reps: "", weight: "" }));
-  });
-  return { day, exercises };
+  return {
+    day,
+    type: null,
+    abs: false,
+    run: false,
+    absExtraCount: 0,
+    exercises: {},
+    runData: { duration: "", speed: "", incline: "" },
+  };
 }
 
 function getDraft(day) {
   if (!drafts[day]) {
     drafts[day] = emptyDraftFor(day);
   }
-  return drafts[day];
+  const draft = drafts[day];
+  if (draft.type === undefined) draft.type = null;
+  if (draft.abs === undefined) draft.abs = false;
+  if (draft.run === undefined) draft.run = false;
+  if (draft.absExtraCount === undefined) draft.absExtraCount = 0;
+  if (!draft.exercises) draft.exercises = {};
+  if (!draft.runData) draft.runData = { duration: "", speed: "", incline: "" };
+  return draft;
 }
 
-function lastSessionFor(day) {
+function absNameForIndex(i) {
+  return i === 1 ? ABS_BASE_NAME : `${ABS_BASE_NAME} ${i}`;
+}
+
+function activeExerciseNames(draft) {
+  const names = [];
+  if (draft.type && draft.type !== "Rest") {
+    WORKOUT_TYPES[draft.type].exercises.forEach((ex) => names.push(ex.name));
+  }
+  if (draft.abs) {
+    for (let i = 1; i <= 1 + draft.absExtraCount; i++) {
+      names.push(absNameForIndex(i));
+    }
+  }
+  return names;
+}
+
+function exerciseDefFor(draft, name) {
+  if (draft.type && draft.type !== "Rest") {
+    const found = WORKOUT_TYPES[draft.type].exercises.find((ex) => ex.name === name);
+    if (found) return found;
+  }
+  if (name.startsWith(ABS_BASE_NAME)) return ABS_EXERCISE_DEF;
+  return { targetReps: "" };
+}
+
+function syncDraftExercises(draft) {
+  activeExerciseNames(draft).forEach((name) => {
+    if (!draft.exercises[name]) {
+      const def = exerciseDefFor(draft, name);
+      draft.exercises[name] = Array.from({ length: def.initialSets || DEFAULT_SETS }, () => ({ reps: "", weight: "" }));
+    }
+  });
+}
+
+function hasLoggedData(draft) {
+  const hasSets = activeExerciseNames(draft).some((name) =>
+    (draft.exercises[name] || []).some((s) => s.reps !== "")
+  );
+  const hasRun = Object.values(draft.runData).some((v) => v !== "");
+  return hasSets || hasRun;
+}
+
+function lastLoggedFor(exerciseName) {
   const history = loadHistory();
-  return history.find((h) => h.day === day) || null;
+  const entry = history.find(
+    (h) => h.exercises && h.exercises[exerciseName] && h.exercises[exerciseName].some((s) => s.reps !== "")
+  );
+  return entry ? entry.exercises[exerciseName] : null;
 }
 
 function populateDaySelect() {
@@ -166,102 +228,203 @@ function populateDaySelect() {
   daySelect.value = currentDay;
 }
 
-function renderDay() {
-  const plan = WORKOUT_PLAN[currentDay];
-  const draft = getDraft(currentDay);
+function renderSetupHtml(draft) {
+  const typeButtonsHtml = WORKOUT_TYPE_NAMES.map((name) => {
+    const selected = draft.type === name;
+    return `<button class="type-btn ${selected ? "selected" : ""}" data-type="${escapeAttr(name)}">${name}</button>`;
+  }).join("");
 
-  if (plan.exercises.length === 0) {
-    dayPanel.innerHTML = `
-      <p class="day-title">${plan.label}</p>
-      <div class="rest-day">Rest day. Go touch grass. 🌱</div>
-    `;
-    return;
-  }
+  return `
+    <div class="workout-setup">
+      <div class="type-picker">${typeButtonsHtml}</div>
+      <div class="extra-toggles">
+        <label class="toggle-check"><input type="checkbox" id="abs-toggle" ${draft.abs ? "checked" : ""} /> Abs</label>
+        <label class="toggle-check"><input type="checkbox" id="run-toggle" ${draft.run ? "checked" : ""} /> Run/Jog</label>
+      </div>
+    </div>
+  `;
+}
 
-  const lastSession = lastSessionFor(currentDay);
-
-  let totalSets = 0;
-  let loggedSets = 0;
-  plan.exercises.forEach((ex) => {
-    totalSets += draft.exercises[ex.name].length;
-    draft.exercises[ex.name].forEach((s) => {
-      if (s.reps !== "") loggedSets++;
+function wireSetupListeners(draft) {
+  dayPanel.querySelectorAll(".type-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      draft.type = btn.dataset.type;
+      syncDraftExercises(draft);
+      saveDrafts();
+      renderDay();
     });
   });
-  const pct = totalSets === 0 ? 0 : Math.round((loggedSets / totalSets) * 100);
 
-  const cardsHtml = plan.exercises
-    .map((ex) => {
-      const setState = draft.exercises[ex.name];
-      const allLogged = setState.every((s) => s.reps !== "");
-      const lastEx = lastSession && lastSession.exercises[ex.name];
+  const absToggle = document.getElementById("abs-toggle");
+  if (absToggle) {
+    absToggle.addEventListener("change", (e) => {
+      draft.abs = e.target.checked;
+      syncDraftExercises(draft);
+      saveDrafts();
+      renderDay();
+    });
+  }
 
-      const rowsHtml = setState
-        .map((s, i) => {
-          const logged = s.reps !== "";
-          const weightInputHtml = ex.bodyweight
-            ? ""
-            : `<input type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" data-field="weight" />`;
-          return `
-            <div class="set-row ${ex.bodyweight ? "bodyweight" : ""} ${logged ? "logged" : ""}" data-exercise="${escapeAttr(ex.name)}" data-set-index="${i}">
-              <div class="set-num">${i + 1}</div>
-              <input type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" data-field="reps" />
-              ${weightInputHtml}
-              <div class="check"></div>
-            </div>
-          `;
-        })
-        .join("");
+  const runToggle = document.getElementById("run-toggle");
+  if (runToggle) {
+    runToggle.addEventListener("change", (e) => {
+      draft.run = e.target.checked;
+      saveDrafts();
+      renderDay();
+    });
+  }
+}
 
-      const lastTimeHtml = lastEx
-        ? `<div class="last-time">Last time: ${lastEx
-            .map((s) => (s.reps !== "" ? `${s.reps}${s.weight !== "" ? "×" + s.weight + "lb" : ""}` : "—"))
-            .join(", ")}</div>`
-        : "";
+function exerciseCardHtml(draft, name) {
+  const ex = exerciseDefFor(draft, name);
+  const setState = draft.exercises[name];
+  const allLogged = setState.every((s) => s.reps !== "");
+  const lastEx = lastLoggedFor(name);
 
+  const rowsHtml = setState
+    .map((s, i) => {
+      const logged = s.reps !== "";
+      const weightInputHtml = ex.bodyweight
+        ? ""
+        : `<input type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" data-field="weight" />`;
       return `
-        <div class="exercise-card ${allLogged ? "complete" : ""}" data-exercise-card="${escapeAttr(ex.name)}">
-          <div class="exercise-header">
-            <div class="exercise-name">${ex.name}</div>
-            <div class="exercise-target">${ex.targetReps} reps</div>
-          </div>
-          ${ex.note ? `<div class="exercise-note">${ex.note}</div>` : ""}
-          ${lastTimeHtml}
-          <div class="set-rows">${rowsHtml}</div>
-          <button class="add-set-btn" data-exercise="${escapeAttr(ex.name)}">+ Add Set</button>
+        <div class="set-row ${ex.bodyweight ? "bodyweight" : ""} ${logged ? "logged" : ""}" data-exercise="${escapeAttr(name)}" data-set-index="${i}">
+          <div class="set-num">${i + 1}</div>
+          <input type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" data-field="reps" />
+          ${weightInputHtml}
+          <div class="check"></div>
         </div>
       `;
     })
     .join("");
 
-  dayPanel.innerHTML = `
-    <p class="day-title">${plan.label}</p>
-    <div class="progress-wrap">
-      <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
-      <div class="progress-label">${loggedSets} / ${totalSets} sets logged</div>
-    </div>
-    ${cardsHtml}
-    <div class="finish-bar">
-      <button id="finish-btn" class="finish-btn" ${loggedSets === 0 ? "disabled" : ""}>Finish Workout</button>
+  const lastTimeHtml = lastEx
+    ? `<div class="last-time">Last time: ${lastEx
+        .map((s) => (s.reps !== "" ? `${s.reps}${s.weight !== "" ? "×" + s.weight + "lb" : ""}` : "—"))
+        .join(", ")}</div>`
+    : "";
+
+  return `
+    <div class="exercise-card ${allLogged ? "complete" : ""}" data-exercise-card="${escapeAttr(name)}">
+      <div class="exercise-header">
+        <div class="exercise-name">${name}</div>
+        <div class="exercise-target">${ex.targetReps} reps</div>
+      </div>
+      ${ex.note ? `<div class="exercise-note">${ex.note}</div>` : ""}
+      ${lastTimeHtml}
+      <div class="set-rows">${rowsHtml}</div>
+      <button class="add-set-btn" data-exercise="${escapeAttr(name)}">+ Add Set</button>
     </div>
   `;
+}
 
-  dayPanel.querySelectorAll(".set-row input").forEach((input) => {
-    input.addEventListener("input", onSetInputChange);
-  });
+function runRowHtml(draft) {
+  const fieldsHtml = RUN_FIELDS.map(
+    (f) => `
+      <div class="run-field">
+        <input type="number" inputmode="decimal" placeholder="${f.label}" value="${draft.runData[f.key]}" data-field="${f.key}" step="${f.step}" min="${f.min}" ${f.max ? `max="${f.max}"` : ""} />
+        <div class="run-field-label">${f.label}</div>
+      </div>
+    `
+  ).join("");
 
-  dayPanel.querySelectorAll(".add-set-btn").forEach((btn) => {
-    btn.addEventListener("click", onAddSetClick);
-  });
+  return `
+    <div class="exercise-card run-card">
+      <div class="exercise-header">
+        <div class="exercise-name">Run / Jog</div>
+      </div>
+      <div class="run-row">${fieldsHtml}</div>
+    </div>
+  `;
+}
 
-  const finishBtn = document.getElementById("finish-btn");
-  if (finishBtn) finishBtn.addEventListener("click", finishWorkout);
+function renderDay() {
+  const draft = getDraft(currentDay);
+  const setupHtml = renderSetupHtml(draft);
+
+  const hasType = !!draft.type;
+  const showRestMessage = draft.type === "Rest" && !draft.abs && !draft.run;
+
+  let bodyHtml = "";
+
+  if (!hasType) {
+    bodyHtml = `<div class="empty-state">Pick a workout type above to get started.</div>`;
+  } else if (showRestMessage) {
+    bodyHtml = `<div class="rest-day">Rest day. Go touch grass. 🌱</div>`;
+  } else {
+    syncDraftExercises(draft);
+    const names = activeExerciseNames(draft);
+
+    let totalSets = 0;
+    let loggedSets = 0;
+    names.forEach((name) => {
+      const setState = draft.exercises[name];
+      totalSets += setState.length;
+      setState.forEach((s) => {
+        if (s.reps !== "") loggedSets++;
+      });
+    });
+    const pct = totalSets === 0 ? 0 : Math.round((loggedSets / totalSets) * 100);
+
+    const cardsHtml = names.map((name) => exerciseCardHtml(draft, name)).join("");
+    const addAbsBtnHtml = draft.abs ? `<button id="add-abs-btn" class="add-set-btn">+ Add Abs Exercise</button>` : "";
+    const runHtml = draft.run ? runRowHtml(draft) : "";
+    const finishEnabled = hasLoggedData(draft);
+
+    bodyHtml = `
+      ${
+        totalSets > 0
+          ? `<div class="progress-wrap">
+              <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+              <div class="progress-label">${loggedSets} / ${totalSets} sets logged</div>
+            </div>`
+          : ""
+      }
+      ${cardsHtml}
+      ${addAbsBtnHtml}
+      ${runHtml}
+      <div class="finish-bar">
+        <button id="finish-btn" class="finish-btn" ${finishEnabled ? "" : "disabled"}>Finish Workout</button>
+      </div>
+    `;
+  }
+
+  dayPanel.innerHTML = setupHtml + bodyHtml;
+  wireSetupListeners(draft);
+
+  if (hasType && !showRestMessage) {
+    dayPanel.querySelectorAll(".set-row input").forEach((input) => {
+      input.addEventListener("input", onSetInputChange);
+    });
+
+    dayPanel.querySelectorAll(".add-set-btn[data-exercise]").forEach((btn) => {
+      btn.addEventListener("click", onAddSetClick);
+    });
+
+    const addAbsBtn = document.getElementById("add-abs-btn");
+    if (addAbsBtn) addAbsBtn.addEventListener("click", onAddAbsClick);
+
+    dayPanel.querySelectorAll(".run-row input").forEach((input) => {
+      input.addEventListener("input", onRunInputChange);
+    });
+
+    const finishBtn = document.getElementById("finish-btn");
+    if (finishBtn) finishBtn.addEventListener("click", finishWorkout);
+  }
 }
 
 function onAddSetClick(e) {
   const exerciseName = e.target.dataset.exercise;
   const draft = getDraft(currentDay);
   draft.exercises[exerciseName].push({ reps: "", weight: "" });
+  saveDrafts();
+  renderDay();
+}
+
+function onAddAbsClick() {
+  const draft = getDraft(currentDay);
+  draft.absExtraCount++;
+  syncDraftExercises(draft);
   saveDrafts();
   renderDay();
 }
@@ -276,11 +439,20 @@ function onSetInputChange(e) {
   draft.exercises[exerciseName][setIndex][field] = e.target.value;
   saveDrafts();
 
-  updateRowAndProgress(exerciseName, row);
+  updateRowAndProgress(draft, exerciseName, row);
 }
 
-function updateRowAndProgress(exerciseName, row) {
+function onRunInputChange(e) {
+  const field = e.target.dataset.field;
   const draft = getDraft(currentDay);
+  draft.runData[field] = e.target.value;
+  saveDrafts();
+
+  const finishBtn = document.getElementById("finish-btn");
+  if (finishBtn) finishBtn.disabled = !hasLoggedData(draft);
+}
+
+function updateRowAndProgress(draft, exerciseName, row) {
   const setState = draft.exercises[exerciseName];
   const logged = setState[Number(row.dataset.setIndex)].reps !== "";
   row.classList.toggle("logged", logged);
@@ -289,27 +461,34 @@ function updateRowAndProgress(exerciseName, row) {
   const allLogged = setState.every((s) => s.reps !== "");
   card.classList.toggle("complete", allLogged);
 
-  const plan = WORKOUT_PLAN[currentDay];
+  const names = activeExerciseNames(draft);
   let totalSets = 0;
   let loggedSets = 0;
-  plan.exercises.forEach((ex) => {
-    totalSets += draft.exercises[ex.name].length;
-    draft.exercises[ex.name].forEach((s) => {
-      if (s.reps !== "") loggedSets++;
+  names.forEach((name) => {
+    const s = draft.exercises[name] || [];
+    totalSets += s.length;
+    s.forEach((set) => {
+      if (set.reps !== "") loggedSets++;
     });
   });
   const pct = totalSets === 0 ? 0 : Math.round((loggedSets / totalSets) * 100);
-  dayPanel.querySelector(".progress-bar-fill").style.width = `${pct}%`;
-  dayPanel.querySelector(".progress-label").textContent = `${loggedSets} / ${totalSets} sets logged`;
+  const fill = dayPanel.querySelector(".progress-bar-fill");
+  if (fill) fill.style.width = `${pct}%`;
+  const label = dayPanel.querySelector(".progress-label");
+  if (label) label.textContent = `${loggedSets} / ${totalSets} sets logged`;
 
   const finishBtn = document.getElementById("finish-btn");
-  if (finishBtn) finishBtn.disabled = loggedSets === 0;
+  if (finishBtn) finishBtn.disabled = !hasLoggedData(draft);
 }
 
 function finishWorkout() {
   const draft = getDraft(currentDay);
-  const hasAnyLogged = Object.values(draft.exercises).some((sets) => sets.some((s) => s.reps !== ""));
-  if (!hasAnyLogged) return;
+  if (!hasLoggedData(draft)) return;
+
+  const exercisesToSave = {};
+  activeExerciseNames(draft).forEach((name) => {
+    exercisesToSave[name] = draft.exercises[name];
+  });
 
   const history = loadHistory();
   history.unshift({
@@ -317,7 +496,11 @@ function finishWorkout() {
     folderId: null,
     date: todayISODate(),
     day: currentDay,
-    exercises: draft.exercises,
+    type: draft.type,
+    abs: draft.abs,
+    run: draft.run,
+    exercises: exercisesToSave,
+    runData: draft.run ? draft.runData : undefined,
   });
   saveHistory(history);
 
@@ -340,19 +523,28 @@ function historyEntryHtml(entry, folders) {
     })
     .join("");
 
+  const runHtml = entry.runData
+    ? `<div class="history-exercise"><span class="h-name">Run:</span> ${entry.runData.duration || "—"} min · ${entry.runData.speed || "—"} mph · ${entry.runData.incline || "—"} incline</div>`
+    : "";
+
   const folderOptionsHtml =
     `<option value="" ${entry.folderId ? "" : "selected"}>Unsorted</option>` +
     folders
       .map((f) => `<option value="${f.id}" ${entry.folderId === f.id ? "selected" : ""}>${escapeAttr(f.name)}</option>`)
       .join("");
 
+  const headerLabel = entry.type
+    ? `${entry.day} — ${entry.type}${entry.abs ? " + Abs" : ""}${entry.run ? " + Run" : ""}`
+    : entry.day;
+
   return `
     <div class="history-entry" data-entry-id="${entry.id}">
       <div class="history-entry-header">
-        <span>${entry.day}</span>
+        <span>${headerLabel}</span>
         <span class="h-date">${entry.date}</span>
       </div>
       ${exercisesHtml}
+      ${runHtml}
       <div class="history-entry-controls">
         <select class="move-folder-select" data-entry-id="${entry.id}">${folderOptionsHtml}</select>
         <button class="ghost-btn small delete-entry-btn" data-entry-id="${entry.id}">Delete</button>

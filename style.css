@@ -379,3 +379,87 @@ select#day-select {
   font-size: 0.85rem;
   text-align: left;
 }
+
+.workout-setup {
+  margin-bottom: 20px;
+}
+
+.type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.type-btn {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.type-btn:hover { border-color: var(--accent); }
+
+.type-btn.selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.extra-toggles {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.toggle-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.toggle-check input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.run-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.run-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 80px;
+}
+
+.run-field input {
+  background: #141414;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.run-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.run-field-label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-align: center;
+}
