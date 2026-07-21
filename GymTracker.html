@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gym Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <h1>Workouts</h1>
+    <div class="header-controls">
+      <select id="day-select"></select>
+      <button id="history-toggle" class="ghost-btn">History</button>
+    </div>
+  </header>
+
+  <div id="day-panel"></div>
+
+  <div id="history-panel" class="history-panel hidden">
+    <div class="history-panel-header">
+      <h2>History</h2>
+      <div class="history-header-actions">
+        <button id="new-folder-btn" class="ghost-btn">+ New Folder</button>
+        <button id="history-close" class="ghost-btn">Close</button>
+      </div>
+    </div>
+    <div id="history-list"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
