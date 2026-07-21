@@ -131,6 +131,33 @@ select#day-select {
   gap: 8px;
 }
 
+.exercise-card:not(.run-card) .exercise-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.exercise-card.collapsed .exercise-card-body {
+  display: none;
+}
+
+.exercise-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-arrow {
+  display: inline-block;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  transition: transform 0.15s ease;
+}
+
+.exercise-card.collapsed .collapse-arrow,
+.history-entry.collapsed .collapse-arrow {
+  transform: rotate(-90deg);
+}
+
 .exercise-name {
   font-weight: 600;
   font-size: 1rem;
@@ -323,6 +350,18 @@ select#day-select {
   justify-content: space-between;
   font-weight: 600;
   margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.history-entry-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-entry.collapsed .history-entry-body {
+  display: none;
 }
 
 .history-entry-header .h-date {
