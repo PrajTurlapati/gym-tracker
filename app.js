@@ -454,7 +454,11 @@ function renderHistory() {
 }
 
 function escapeAttr(str) {
-  return str.replace(/"/g, "&quot;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function cssEscape(str) {
