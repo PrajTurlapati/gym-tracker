@@ -75,6 +75,8 @@ const historyList = document.getElementById("history-list");
 
 let currentDay = todayName();
 let drafts = loadDrafts();
+let collapsedExerciseCards = new Set();
+let openHistoryEntries = new Set();
 
 function todayName() {
   return DAY_NAMES[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
@@ -280,6 +282,7 @@ function exerciseCardHtml(draft, name) {
   const setState = draft.exercises[name];
   const allLogged = setState.every((s) => s.reps !== "");
   const lastEx = lastLoggedFor(name);
+  const collapsed = collapsedExerciseCards.has(name);
 
   const rowsHtml = setState
     .map((s, i) => {
@@ -305,15 +308,20 @@ function exerciseCardHtml(draft, name) {
     : "";
 
   return `
-    <div class="exercise-card ${allLogged ? "complete" : ""}" data-exercise-card="${escapeAttr(name)}">
+    <div class="exercise-card ${allLogged ? "complete" : ""} ${collapsed ? "collapsed" : ""}" data-exercise-card="${escapeAttr(name)}">
       <div class="exercise-header">
         <div class="exercise-name">${name}</div>
-        <div class="exercise-target">${ex.targetReps} reps</div>
+        <div class="exercise-header-right">
+          <div class="exercise-target">${ex.targetReps} reps</div>
+          <span class="collapse-arrow">▾</span>
+        </div>
       </div>
-      ${ex.note ? `<div class="exercise-note">${ex.note}</div>` : ""}
-      ${lastTimeHtml}
-      <div class="set-rows">${rowsHtml}</div>
-      <button class="add-set-btn" data-exercise="${escapeAttr(name)}">+ Add Set</button>
+      <div class="exercise-card-body">
+        ${ex.note ? `<div class="exercise-note">${ex.note}</div>` : ""}
+        ${lastTimeHtml}
+        <div class="set-rows">${rowsHtml}</div>
+        <button class="add-set-btn" data-exercise="${escapeAttr(name)}">+ Add Set</button>
+      </div>
     </div>
   `;
 }
@@ -401,6 +409,10 @@ function renderDay() {
       btn.addEventListener("click", onAddSetClick);
     });
 
+    dayPanel.querySelectorAll(".exercise-card:not(.run-card) > .exercise-header").forEach((header) => {
+      header.addEventListener("click", onExerciseHeaderClick);
+    });
+
     const addAbsBtn = document.getElementById("add-abs-btn");
     if (addAbsBtn) addAbsBtn.addEventListener("click", onAddAbsClick);
 
@@ -411,6 +423,14 @@ function renderDay() {
     const finishBtn = document.getElementById("finish-btn");
     if (finishBtn) finishBtn.addEventListener("click", finishWorkout);
   }
+}
+
+function onExerciseHeaderClick(e) {
+  const card = e.currentTarget.closest(".exercise-card");
+  const name = card.dataset.exerciseCard;
+  const nowCollapsed = card.classList.toggle("collapsed");
+  if (nowCollapsed) collapsedExerciseCards.add(name);
+  else collapsedExerciseCards.delete(name);
 }
 
 function onAddSetClick(e) {
@@ -537,17 +557,21 @@ function historyEntryHtml(entry, folders) {
     ? `${entry.day} — ${entry.type}${entry.abs ? " + Abs" : ""}${entry.run ? " + Run" : ""}`
     : entry.day;
 
+  const collapsed = !openHistoryEntries.has(entry.id);
+
   return `
-    <div class="history-entry" data-entry-id="${entry.id}">
+    <div class="history-entry ${collapsed ? "collapsed" : ""}" data-entry-id="${entry.id}">
       <div class="history-entry-header">
-        <span>${headerLabel}</span>
+        <span class="history-entry-title"><span class="collapse-arrow">▾</span>${headerLabel}</span>
         <span class="h-date">${entry.date}</span>
       </div>
-      ${exercisesHtml}
-      ${runHtml}
-      <div class="history-entry-controls">
-        <select class="move-folder-select" data-entry-id="${entry.id}">${folderOptionsHtml}</select>
-        <button class="ghost-btn small delete-entry-btn" data-entry-id="${entry.id}">Delete</button>
+      <div class="history-entry-body">
+        ${exercisesHtml}
+        ${runHtml}
+        <div class="history-entry-controls">
+          <select class="move-folder-select" data-entry-id="${entry.id}">${folderOptionsHtml}</select>
+          <button class="ghost-btn small delete-entry-btn" data-entry-id="${entry.id}">Delete</button>
+        </div>
       </div>
     </div>
   `;
@@ -589,6 +613,16 @@ function renderHistory() {
   }
 
   historyList.innerHTML = folderSectionsHtml + unsortedHtml;
+
+  historyList.querySelectorAll(".history-entry-header").forEach((header) => {
+    header.addEventListener("click", () => {
+      const entry = header.closest(".history-entry");
+      const id = entry.dataset.entryId;
+      const nowCollapsed = entry.classList.toggle("collapsed");
+      if (nowCollapsed) openHistoryEntries.delete(id);
+      else openHistoryEntries.add(id);
+    });
+  });
 
   historyList.querySelectorAll(".move-folder-select").forEach((sel) => {
     sel.addEventListener("change", (e) => {
@@ -659,6 +693,7 @@ function cssEscape(str) {
 
 daySelect.addEventListener("change", () => {
   currentDay = daySelect.value;
+  collapsedExerciseCards.clear();
   renderDay();
 });
 
