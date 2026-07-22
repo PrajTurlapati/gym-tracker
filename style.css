@@ -18,6 +18,8 @@
 
 * { box-sizing: border-box; }
 
+.hidden { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -341,6 +343,30 @@ select#day-select {
   gap: 8px;
 }
 
+.inline-form {
+  max-width: 640px;
+  margin: 0 auto 16px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inline-form input[type="text"] {
+  flex: 1;
+  min-width: 180px;
+  background: #141414;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.inline-form input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 #history-list {
   max-width: 640px;
   margin: 0 auto;
@@ -357,6 +383,26 @@ select#day-select {
   margin-bottom: 10px;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.folder-name-view {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.folder-name-edit {
+  background: #141414;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.folder-name-edit:focus {
+  outline: none;
 }
 
 .folder-name {
@@ -526,6 +572,30 @@ select#day-select {
   accent-color: var(--accent);
   width: 16px;
   height: 16px;
+}
+
+.session-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.date-input {
+  background: #141414;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 0.9rem;
+  color-scheme: dark;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .run-row {

@@ -164,6 +164,7 @@ function emptyDraftFor(day) {
     absExtraCount: 0,
     exercises: {},
     runData: { duration: "", speed: "", incline: "" },
+    date: todayISODate(),
   };
 }
 
@@ -178,6 +179,7 @@ function getDraft(day) {
   if (draft.absExtraCount === undefined) draft.absExtraCount = 0;
   if (!draft.exercises) draft.exercises = {};
   if (!draft.runData) draft.runData = { duration: "", speed: "", incline: "" };
+  if (!draft.date) draft.date = todayISODate();
   return draft;
 }
 
@@ -264,6 +266,10 @@ function renderSetupHtml(draft) {
         <label class="toggle-check"><input type="checkbox" id="abs-toggle" ${draft.abs ? "checked" : ""} /> Abs</label>
         <label class="toggle-check"><input type="checkbox" id="run-toggle" ${draft.run ? "checked" : ""} /> Run/Jog</label>
       </div>
+      <div class="session-date-row">
+        <label for="session-date-input">Session date</label>
+        <input type="date" id="session-date-input" class="date-input" value="${draft.date}" />
+      </div>
     </div>
   `;
 }
@@ -294,6 +300,15 @@ function wireSetupListeners(draft) {
       draft.run = e.target.checked;
       saveDrafts();
       renderDay();
+    });
+  }
+
+  const sessionDateInput = document.getElementById("session-date-input");
+  if (sessionDateInput) {
+    sessionDateInput.addEventListener("change", (e) => {
+      if (!e.target.value) return;
+      draft.date = e.target.value;
+      saveDrafts();
     });
   }
 }
@@ -561,7 +576,7 @@ function finishWorkout() {
   history.unshift({
     id: makeId(),
     folderId: null,
-    date: todayISODate(),
+    date: draft.date,
     day: currentDay,
     type: draft.type,
     abs: draft.abs,
@@ -629,14 +644,18 @@ function historyEntryHtml(entry, folders) {
 function renderHistory() {
   const history = loadHistory();
   const folders = loadFolders();
+  const byDateDesc = (a, b) => (b.date || "").localeCompare(a.date || "");
 
   const folderSectionsHtml = folders
     .map((f) => {
-      const entries = history.filter((h) => h.folderId === f.id);
+      const entries = history.filter((h) => h.folderId === f.id).sort(byDateDesc);
       return `
         <div class="folder-section">
-          <div class="folder-header">
-            <span class="folder-name">${escapeAttr(f.name)} <span class="folder-count">(${entries.length})</span></span>
+          <div class="folder-header" data-folder-id="${f.id}">
+            <span class="folder-name-view">
+              <span class="folder-name">${escapeAttr(f.name)}</span> <span class="folder-count">(${entries.length})</span>
+            </span>
+            <input type="text" class="folder-name-edit hidden" value="${escapeAttr(f.name)}" data-folder-id="${f.id}" />
             <div class="folder-actions">
               <button class="ghost-btn small rename-folder-btn" data-folder-id="${f.id}">Rename</button>
               <button class="ghost-btn small delete-folder-btn" data-folder-id="${f.id}">Delete</button>
@@ -648,10 +667,10 @@ function renderHistory() {
     })
     .join("");
 
-  const unsorted = history.filter((h) => !h.folderId);
+  const unsorted = history.filter((h) => !h.folderId).sort(byDateDesc);
   const unsortedHtml = `
     <div class="folder-section">
-      <div class="folder-header"><span class="folder-name">Unsorted</span></div>
+      <div class="folder-header"><span class="folder-name-view"><span class="folder-name">Unsorted</span></span></div>
       ${unsorted.length ? unsorted.map((e) => historyEntryHtml(e, folders)).join("") : `<div class="empty-state small">Nothing unsorted.</div>`}
     </div>
   `;
@@ -699,16 +718,37 @@ function renderHistory() {
 
   historyList.querySelectorAll(".rename-folder-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const folderId = e.target.dataset.folderId;
+      const header = e.target.closest(".folder-header");
+      header.querySelector(".folder-name-view").classList.add("hidden");
+      const input = header.querySelector(".folder-name-edit");
+      input.classList.remove("hidden");
+      input.focus();
+      input.select();
+    });
+  });
+
+  historyList.querySelectorAll(".folder-name-edit").forEach((input) => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+      if (e.key === "Escape") {
+        input.dataset.cancelled = "true";
+        input.blur();
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (input.dataset.cancelled === "true") {
+        renderHistory();
+        return;
+      }
+      const folderId = input.dataset.folderId;
+      const newName = input.value.trim();
       const f = loadFolders();
       const folder = f.find((x) => x.id === folderId);
-      if (!folder) return;
-      const newName = prompt("Rename folder", folder.name);
-      if (newName && newName.trim()) {
-        folder.name = newName.trim();
+      if (folder && newName) {
+        folder.name = newName;
         saveFolders(f);
-        renderHistory();
       }
+      renderHistory();
     });
   });
 
@@ -755,14 +795,34 @@ historyClose.addEventListener("click", () => {
   historyPanel.classList.add("hidden");
 });
 
+const newFolderForm = document.getElementById("new-folder-form");
+const newFolderInput = document.getElementById("new-folder-input");
+
 document.getElementById("new-folder-btn").addEventListener("click", () => {
-  const name = prompt("New folder name (e.g. Week of Jul 20)");
-  if (name && name.trim()) {
-    const folders = loadFolders();
-    folders.push({ id: makeId(), name: name.trim() });
-    saveFolders(folders);
-    renderHistory();
-  }
+  newFolderForm.classList.remove("hidden");
+  newFolderInput.value = "";
+  newFolderInput.focus();
+});
+
+document.getElementById("new-folder-cancel").addEventListener("click", () => {
+  newFolderForm.classList.add("hidden");
+});
+
+function createFolderFromInput() {
+  const name = newFolderInput.value.trim();
+  if (!name) return;
+  const folders = loadFolders();
+  folders.push({ id: makeId(), name });
+  saveFolders(folders);
+  newFolderForm.classList.add("hidden");
+  renderHistory();
+}
+
+document.getElementById("new-folder-confirm").addEventListener("click", createFolderFromInput);
+
+newFolderInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") createFolderFromInput();
+  if (e.key === "Escape") newFolderForm.classList.add("hidden");
 });
 
 populateDaySelect();
