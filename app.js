@@ -51,6 +51,18 @@ const WORKOUT_TYPES = {
 
 const WORKOUT_TYPE_NAMES = Object.keys(WORKOUT_TYPES);
 
+const WORKOUT_TYPE_SLUGS = {
+  "Chest/Triceps": "chest",
+  "Back/Biceps": "back",
+  Legs: "legs",
+  "Shoulders & Legs": "shoulders",
+  Rest: "rest",
+};
+
+function typeSlug(name) {
+  return WORKOUT_TYPE_SLUGS[name] || "";
+}
+
 const ABS_BASE_NAME = "Abs Workout";
 const ABS_EXERCISE_DEF = { targetReps: "11-18", initialSets: 2 };
 
@@ -65,6 +77,7 @@ const DRAFTS_KEY = "gymTrackerDrafts";
 const HISTORY_KEY = "gymTrackerHistory";
 const FOLDERS_KEY = "gymTrackerFolders";
 const DEFAULT_SETS = 3;
+const MIN_SETS = 2;
 
 const daySelect = document.getElementById("day-select");
 const dayPanel = document.getElementById("day-panel");
@@ -151,6 +164,7 @@ function emptyDraftFor(day) {
     absExtraCount: 0,
     exercises: {},
     runData: { duration: "", speed: "", incline: "" },
+    date: todayISODate(),
   };
 }
 
@@ -165,6 +179,7 @@ function getDraft(day) {
   if (draft.absExtraCount === undefined) draft.absExtraCount = 0;
   if (!draft.exercises) draft.exercises = {};
   if (!draft.runData) draft.runData = { duration: "", speed: "", incline: "" };
+  if (!draft.date) draft.date = todayISODate();
   return draft;
 }
 
@@ -192,6 +207,14 @@ function exerciseDefFor(draft, name) {
   }
   if (name.startsWith(ABS_BASE_NAME)) return ABS_EXERCISE_DEF;
   return { targetReps: "" };
+}
+
+function isSetFull(ex, s) {
+  return s.reps !== "" && (ex.bodyweight || s.weight !== "");
+}
+
+function isSetTouched(ex, s) {
+  return s.reps !== "" || (!ex.bodyweight && s.weight !== "");
 }
 
 function syncDraftExercises(draft) {
@@ -233,7 +256,7 @@ function populateDaySelect() {
 function renderSetupHtml(draft) {
   const typeButtonsHtml = WORKOUT_TYPE_NAMES.map((name) => {
     const selected = draft.type === name;
-    return `<button class="type-btn ${selected ? "selected" : ""}" data-type="${escapeAttr(name)}">${name}</button>`;
+    return `<button class="type-btn type-chip-${typeSlug(name)} ${selected ? "selected" : ""}" data-type="${escapeAttr(name)}">${name}</button>`;
   }).join("");
 
   return `
@@ -242,6 +265,10 @@ function renderSetupHtml(draft) {
       <div class="extra-toggles">
         <label class="toggle-check"><input type="checkbox" id="abs-toggle" ${draft.abs ? "checked" : ""} /> Abs</label>
         <label class="toggle-check"><input type="checkbox" id="run-toggle" ${draft.run ? "checked" : ""} /> Run/Jog</label>
+      </div>
+      <div class="session-date-row">
+        <label for="session-date-input">Session date</label>
+        <input type="date" id="session-date-input" class="date-input" value="${draft.date}" />
       </div>
     </div>
   `;
@@ -275,18 +302,34 @@ function wireSetupListeners(draft) {
       renderDay();
     });
   }
+
+  const sessionDateInput = document.getElementById("session-date-input");
+  if (sessionDateInput) {
+    sessionDateInput.addEventListener("change", (e) => {
+      if (!e.target.value) return;
+      draft.date = e.target.value;
+      saveDrafts();
+    });
+  }
 }
 
 function exerciseCardHtml(draft, name) {
   const ex = exerciseDefFor(draft, name);
   const setState = draft.exercises[name];
-  const allLogged = setState.every((s) => s.reps !== "");
+  const allFull = setState.every((s) => isSetFull(ex, s));
+  const anyTouched = setState.some((s) => isSetTouched(ex, s));
+  const partial = anyTouched && !allFull;
   const lastEx = lastLoggedFor(name);
   const collapsed = collapsedExerciseCards.has(name);
+  const canDelete = setState.length > MIN_SETS;
+
+  const isMainTypeExercise =
+    draft.type && draft.type !== "Rest" && WORKOUT_TYPES[draft.type].exercises.some((e) => e.name === name);
+  const typeChipClass = isMainTypeExercise ? `type-chip-${typeSlug(draft.type)}` : "";
 
   const rowsHtml = setState
     .map((s, i) => {
-      const logged = s.reps !== "";
+      const logged = isSetFull(ex, s);
       const weightInputHtml = ex.bodyweight
         ? ""
         : `<input type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" data-field="weight" />`;
@@ -296,6 +339,7 @@ function exerciseCardHtml(draft, name) {
           <input type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" data-field="reps" />
           ${weightInputHtml}
           <div class="check"></div>
+          <button class="delete-set-btn" data-exercise="${escapeAttr(name)}" data-set-index="${i}" ${canDelete ? "" : "disabled"} aria-label="Delete set" title="Delete set">×</button>
         </div>
       `;
     })
@@ -308,7 +352,7 @@ function exerciseCardHtml(draft, name) {
     : "";
 
   return `
-    <div class="exercise-card ${allLogged ? "complete" : ""} ${collapsed ? "collapsed" : ""}" data-exercise-card="${escapeAttr(name)}">
+    <div class="exercise-card ${typeChipClass} ${allFull ? "complete" : ""} ${partial ? "partial" : ""} ${collapsed ? "collapsed" : ""}" data-exercise-card="${escapeAttr(name)}">
       <div class="exercise-header">
         <div class="exercise-name">${name}</div>
         <div class="exercise-header-right">
@@ -409,6 +453,10 @@ function renderDay() {
       btn.addEventListener("click", onAddSetClick);
     });
 
+    dayPanel.querySelectorAll(".delete-set-btn").forEach((btn) => {
+      btn.addEventListener("click", onDeleteSetClick);
+    });
+
     dayPanel.querySelectorAll(".exercise-card:not(.run-card) > .exercise-header").forEach((header) => {
       header.addEventListener("click", onExerciseHeaderClick);
     });
@@ -437,6 +485,17 @@ function onAddSetClick(e) {
   const exerciseName = e.target.dataset.exercise;
   const draft = getDraft(currentDay);
   draft.exercises[exerciseName].push({ reps: "", weight: "" });
+  saveDrafts();
+  renderDay();
+}
+
+function onDeleteSetClick(e) {
+  const exerciseName = e.currentTarget.dataset.exercise;
+  const setIndex = Number(e.currentTarget.dataset.setIndex);
+  const draft = getDraft(currentDay);
+  const sets = draft.exercises[exerciseName];
+  if (!sets || sets.length <= MIN_SETS) return;
+  sets.splice(setIndex, 1);
   saveDrafts();
   renderDay();
 }
@@ -473,13 +532,16 @@ function onRunInputChange(e) {
 }
 
 function updateRowAndProgress(draft, exerciseName, row) {
+  const ex = exerciseDefFor(draft, exerciseName);
   const setState = draft.exercises[exerciseName];
-  const logged = setState[Number(row.dataset.setIndex)].reps !== "";
+  const logged = isSetFull(ex, setState[Number(row.dataset.setIndex)]);
   row.classList.toggle("logged", logged);
 
   const card = dayPanel.querySelector(`[data-exercise-card="${cssEscape(exerciseName)}"]`);
-  const allLogged = setState.every((s) => s.reps !== "");
-  card.classList.toggle("complete", allLogged);
+  const allFull = setState.every((s) => isSetFull(ex, s));
+  const anyTouched = setState.some((s) => isSetTouched(ex, s));
+  card.classList.toggle("complete", allFull);
+  card.classList.toggle("partial", anyTouched && !allFull);
 
   const names = activeExerciseNames(draft);
   let totalSets = 0;
@@ -514,7 +576,7 @@ function finishWorkout() {
   history.unshift({
     id: makeId(),
     folderId: null,
-    date: todayISODate(),
+    date: draft.date,
     day: currentDay,
     type: draft.type,
     abs: draft.abs,
@@ -557,12 +619,14 @@ function historyEntryHtml(entry, folders) {
     ? `${entry.day} — ${entry.type}${entry.abs ? " + Abs" : ""}${entry.run ? " + Run" : ""}`
     : entry.day;
 
+  const typeDotHtml = entry.type ? `<span class="type-dot type-chip-${typeSlug(entry.type)}"></span>` : "";
+
   const collapsed = !openHistoryEntries.has(entry.id);
 
   return `
     <div class="history-entry ${collapsed ? "collapsed" : ""}" data-entry-id="${entry.id}">
       <div class="history-entry-header">
-        <span class="history-entry-title"><span class="collapse-arrow">▾</span>${headerLabel}</span>
+        <span class="history-entry-title"><span class="collapse-arrow">▾</span>${typeDotHtml}${headerLabel}</span>
         <span class="h-date">${entry.date}</span>
       </div>
       <div class="history-entry-body">
@@ -580,14 +644,18 @@ function historyEntryHtml(entry, folders) {
 function renderHistory() {
   const history = loadHistory();
   const folders = loadFolders();
+  const byDateDesc = (a, b) => (b.date || "").localeCompare(a.date || "");
 
   const folderSectionsHtml = folders
     .map((f) => {
-      const entries = history.filter((h) => h.folderId === f.id);
+      const entries = history.filter((h) => h.folderId === f.id).sort(byDateDesc);
       return `
         <div class="folder-section">
-          <div class="folder-header">
-            <span class="folder-name">${escapeAttr(f.name)} <span class="folder-count">(${entries.length})</span></span>
+          <div class="folder-header" data-folder-id="${f.id}">
+            <span class="folder-name-view">
+              <span class="folder-name">${escapeAttr(f.name)}</span> <span class="folder-count">(${entries.length})</span>
+            </span>
+            <input type="text" class="folder-name-edit hidden" value="${escapeAttr(f.name)}" data-folder-id="${f.id}" />
             <div class="folder-actions">
               <button class="ghost-btn small rename-folder-btn" data-folder-id="${f.id}">Rename</button>
               <button class="ghost-btn small delete-folder-btn" data-folder-id="${f.id}">Delete</button>
@@ -599,10 +667,10 @@ function renderHistory() {
     })
     .join("");
 
-  const unsorted = history.filter((h) => !h.folderId);
+  const unsorted = history.filter((h) => !h.folderId).sort(byDateDesc);
   const unsortedHtml = `
     <div class="folder-section">
-      <div class="folder-header"><span class="folder-name">Unsorted</span></div>
+      <div class="folder-header"><span class="folder-name-view"><span class="folder-name">Unsorted</span></span></div>
       ${unsorted.length ? unsorted.map((e) => historyEntryHtml(e, folders)).join("") : `<div class="empty-state small">Nothing unsorted.</div>`}
     </div>
   `;
@@ -650,16 +718,37 @@ function renderHistory() {
 
   historyList.querySelectorAll(".rename-folder-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const folderId = e.target.dataset.folderId;
+      const header = e.target.closest(".folder-header");
+      header.querySelector(".folder-name-view").classList.add("hidden");
+      const input = header.querySelector(".folder-name-edit");
+      input.classList.remove("hidden");
+      input.focus();
+      input.select();
+    });
+  });
+
+  historyList.querySelectorAll(".folder-name-edit").forEach((input) => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+      if (e.key === "Escape") {
+        input.dataset.cancelled = "true";
+        input.blur();
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (input.dataset.cancelled === "true") {
+        renderHistory();
+        return;
+      }
+      const folderId = input.dataset.folderId;
+      const newName = input.value.trim();
       const f = loadFolders();
       const folder = f.find((x) => x.id === folderId);
-      if (!folder) return;
-      const newName = prompt("Rename folder", folder.name);
-      if (newName && newName.trim()) {
-        folder.name = newName.trim();
+      if (folder && newName) {
+        folder.name = newName;
         saveFolders(f);
-        renderHistory();
       }
+      renderHistory();
     });
   });
 
@@ -706,14 +795,34 @@ historyClose.addEventListener("click", () => {
   historyPanel.classList.add("hidden");
 });
 
+const newFolderForm = document.getElementById("new-folder-form");
+const newFolderInput = document.getElementById("new-folder-input");
+
 document.getElementById("new-folder-btn").addEventListener("click", () => {
-  const name = prompt("New folder name (e.g. Week of Jul 20)");
-  if (name && name.trim()) {
-    const folders = loadFolders();
-    folders.push({ id: makeId(), name: name.trim() });
-    saveFolders(folders);
-    renderHistory();
-  }
+  newFolderForm.classList.remove("hidden");
+  newFolderInput.value = "";
+  newFolderInput.focus();
+});
+
+document.getElementById("new-folder-cancel").addEventListener("click", () => {
+  newFolderForm.classList.add("hidden");
+});
+
+function createFolderFromInput() {
+  const name = newFolderInput.value.trim();
+  if (!name) return;
+  const folders = loadFolders();
+  folders.push({ id: makeId(), name });
+  saveFolders(folders);
+  newFolderForm.classList.add("hidden");
+  renderHistory();
+}
+
+document.getElementById("new-folder-confirm").addEventListener("click", createFolderFromInput);
+
+newFolderInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") createFolderFromInput();
+  if (e.key === "Escape") newFolderForm.classList.add("hidden");
 });
 
 populateDaySelect();

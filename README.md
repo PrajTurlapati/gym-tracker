@@ -1,14 +1,18 @@
 # Gym Tracker
 
-A small single-page workout tracker. Pick a day, log your sets (reps and weight) against a fixed weekly plan, and see your last session's numbers for each exercise while you train. Finished workouts are saved to history and can be organized into folders.
+A small single-page workout tracker. For any day, pick a workout type, optionally add abs and/or a post-workout run/jog, and log your sets (reps and weight) while you train. Finished workouts are saved to history and can be organized into folders.
 
 ## Features
 
-- Weekly workout plan (Monday–Sunday) with sets, target reps, and rest days
-- Log reps/weight per set, add extra sets on the fly
-- Progress bar showing sets logged vs. total for the day
-- "Last time" reference pulled from your most recent session for that day
-- History view with folders for organizing past sessions
+- Pick one of 5 workout types per day (Chest/Triceps, Back/Biceps, Legs, Shoulders & Legs, Rest) — not tied to the calendar weekday
+- Independent Abs toggle (one exercise block by default, "+ Add Abs Exercise" for more) and Run/Jog toggle (duration, speed, incline)
+- Each workout type has its own color, shown on the picker, as a left-border accent on exercise cards, and as a dot in history
+- Log reps/weight per set, add or delete sets on the fly (2-set minimum per exercise)
+- Exercise cards turn green once every set has both reps and weight logged, red if partially filled
+- Collapsible exercise cards and history entries to keep long lists manageable
+- "Last time" reference pulled from your most recent session for that exercise
+- Editable session date (defaults to today) for backdating a session you didn't log same-day
+- History view, sorted by session date, with folders for organizing past sessions
 
 ## Running it
 
@@ -22,6 +26,8 @@ npx serve .
 
 All drafts, history, and folders are stored in the browser's `localStorage` — nothing leaves your device.
 
-## Editing the workout plan
+## Editing workout types and colors
 
-The weekly plan lives in `WORKOUT_PLAN` at the top of [app.js](app.js). Each day maps to a label and a list of exercises with `sets`, `targetReps`, and optional `note`/`bodyweight` flags.
+The 5 workout types live in `WORKOUT_TYPES` at the top of [app.js](app.js). Each maps to a label and a list of exercises with `targetReps` and optional `note`/`bodyweight` flags. The abs exercise definition (`ABS_EXERCISE_DEF`) and run-tracker fields (`RUN_FIELDS`) are defined nearby.
+
+Per-type colors are CSS variables (`--type-chest`, `--type-back`, etc.) in [style.css](style.css), matched to type names via `WORKOUT_TYPE_SLUGS` in app.js.
