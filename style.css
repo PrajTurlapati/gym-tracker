@@ -1,13 +1,19 @@
 :root {
-  --bg: #161616;
+  --bg: #4e4e54;
   --card: #1f1f1f;
-  --card-border: #2c2c2c;
+  --card-border: #38383d;
   --text: #f2f2f2;
-  --text-dim: #9a9a9a;
+  --text-dim: #c7c7cc;
   --accent: #ff6a3d;
   --accent-dim: #7a3a26;
   --done: #3ddc84;
-  --rest: #4a90e2;
+  --warn: #e5484d;
+
+  --type-chest: #002395;
+  --type-back: #004fa7;
+  --type-legs: #400040;
+  --type-shoulders: #59008b;
+  --type-rest: #f27300;
 }
 
 * { box-sizing: border-box; }
@@ -106,21 +112,36 @@ select#day-select {
   border-radius: 12px;
   padding: 40px 20px;
   text-align: center;
-  color: var(--rest);
+  color: var(--type-rest);
   font-size: 1.2rem;
 }
 
 .exercise-card {
   background: var(--card);
   border: 1px solid var(--card-border);
+  border-left-width: 4px;
   border-radius: 12px;
   padding: 14px 16px;
   margin-bottom: 12px;
   transition: border-color 0.15s ease;
 }
 
+.exercise-card.type-chip-chest { border-left-color: var(--type-chest); }
+.exercise-card.type-chip-back { border-left-color: var(--type-back); }
+.exercise-card.type-chip-legs { border-left-color: var(--type-legs); }
+.exercise-card.type-chip-shoulders { border-left-color: var(--type-shoulders); }
+.exercise-card.type-chip-rest { border-left-color: var(--type-rest); }
+
 .exercise-card.complete {
-  border-color: var(--done);
+  border-top-color: var(--done);
+  border-right-color: var(--done);
+  border-bottom-color: var(--done);
+}
+
+.exercise-card.partial {
+  border-top-color: var(--warn);
+  border-right-color: var(--warn);
+  border-bottom-color: var(--warn);
 }
 
 .exercise-header {
@@ -189,13 +210,35 @@ select#day-select {
 
 .set-row {
   display: grid;
-  grid-template-columns: 28px 1fr 1fr 20px;
+  grid-template-columns: 28px 1fr 1fr 20px 24px;
   gap: 8px;
   align-items: center;
 }
 
 .set-row.bodyweight {
-  grid-template-columns: 28px 1fr 20px;
+  grid-template-columns: 28px 1fr 20px 24px;
+}
+
+.delete-set-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.delete-set-btn:hover:not(:disabled) {
+  color: #ff6a6a;
+  background: rgba(255, 106, 106, 0.12);
+}
+
+.delete-set-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
 }
 
 .add-set-btn {
@@ -364,6 +407,20 @@ select#day-select {
   display: none;
 }
 
+.type-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.type-dot.type-chip-chest { background: var(--type-chest); }
+.type-dot.type-chip-back { background: var(--type-back); }
+.type-dot.type-chip-legs { background: var(--type-legs); }
+.type-dot.type-chip-shoulders { background: var(--type-shoulders); }
+.type-dot.type-chip-rest { background: var(--type-rest); }
+
 .history-entry-header .h-date {
   color: var(--text-dim);
   font-weight: 400;
@@ -440,11 +497,14 @@ select#day-select {
   cursor: pointer;
 }
 
-.type-btn:hover { border-color: var(--accent); }
+.type-btn.type-chip-chest { background: var(--type-chest); border-color: var(--type-chest); }
+.type-btn.type-chip-back { background: var(--type-back); border-color: var(--type-back); }
+.type-btn.type-chip-legs { background: var(--type-legs); border-color: var(--type-legs); }
+.type-btn.type-chip-shoulders { background: var(--type-shoulders); border-color: var(--type-shoulders); }
+.type-btn.type-chip-rest { background: var(--type-rest); border-color: var(--type-rest); color: #1a1a1a; }
 
 .type-btn.selected {
-  border-color: var(--accent);
-  background: var(--accent-dim);
+  box-shadow: 0 0 0 2px var(--text);
 }
 
 .extra-toggles {

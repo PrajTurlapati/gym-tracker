@@ -51,6 +51,18 @@ const WORKOUT_TYPES = {
 
 const WORKOUT_TYPE_NAMES = Object.keys(WORKOUT_TYPES);
 
+const WORKOUT_TYPE_SLUGS = {
+  "Chest/Triceps": "chest",
+  "Back/Biceps": "back",
+  Legs: "legs",
+  "Shoulders & Legs": "shoulders",
+  Rest: "rest",
+};
+
+function typeSlug(name) {
+  return WORKOUT_TYPE_SLUGS[name] || "";
+}
+
 const ABS_BASE_NAME = "Abs Workout";
 const ABS_EXERCISE_DEF = { targetReps: "11-18", initialSets: 2 };
 
@@ -65,6 +77,7 @@ const DRAFTS_KEY = "gymTrackerDrafts";
 const HISTORY_KEY = "gymTrackerHistory";
 const FOLDERS_KEY = "gymTrackerFolders";
 const DEFAULT_SETS = 3;
+const MIN_SETS = 2;
 
 const daySelect = document.getElementById("day-select");
 const dayPanel = document.getElementById("day-panel");
@@ -194,6 +207,14 @@ function exerciseDefFor(draft, name) {
   return { targetReps: "" };
 }
 
+function isSetFull(ex, s) {
+  return s.reps !== "" && (ex.bodyweight || s.weight !== "");
+}
+
+function isSetTouched(ex, s) {
+  return s.reps !== "" || (!ex.bodyweight && s.weight !== "");
+}
+
 function syncDraftExercises(draft) {
   activeExerciseNames(draft).forEach((name) => {
     if (!draft.exercises[name]) {
@@ -233,7 +254,7 @@ function populateDaySelect() {
 function renderSetupHtml(draft) {
   const typeButtonsHtml = WORKOUT_TYPE_NAMES.map((name) => {
     const selected = draft.type === name;
-    return `<button class="type-btn ${selected ? "selected" : ""}" data-type="${escapeAttr(name)}">${name}</button>`;
+    return `<button class="type-btn type-chip-${typeSlug(name)} ${selected ? "selected" : ""}" data-type="${escapeAttr(name)}">${name}</button>`;
   }).join("");
 
   return `
@@ -280,13 +301,20 @@ function wireSetupListeners(draft) {
 function exerciseCardHtml(draft, name) {
   const ex = exerciseDefFor(draft, name);
   const setState = draft.exercises[name];
-  const allLogged = setState.every((s) => s.reps !== "");
+  const allFull = setState.every((s) => isSetFull(ex, s));
+  const anyTouched = setState.some((s) => isSetTouched(ex, s));
+  const partial = anyTouched && !allFull;
   const lastEx = lastLoggedFor(name);
   const collapsed = collapsedExerciseCards.has(name);
+  const canDelete = setState.length > MIN_SETS;
+
+  const isMainTypeExercise =
+    draft.type && draft.type !== "Rest" && WORKOUT_TYPES[draft.type].exercises.some((e) => e.name === name);
+  const typeChipClass = isMainTypeExercise ? `type-chip-${typeSlug(draft.type)}` : "";
 
   const rowsHtml = setState
     .map((s, i) => {
-      const logged = s.reps !== "";
+      const logged = isSetFull(ex, s);
       const weightInputHtml = ex.bodyweight
         ? ""
         : `<input type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" data-field="weight" />`;
@@ -296,6 +324,7 @@ function exerciseCardHtml(draft, name) {
           <input type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" data-field="reps" />
           ${weightInputHtml}
           <div class="check"></div>
+          <button class="delete-set-btn" data-exercise="${escapeAttr(name)}" data-set-index="${i}" ${canDelete ? "" : "disabled"} aria-label="Delete set" title="Delete set">×</button>
         </div>
       `;
     })
@@ -308,7 +337,7 @@ function exerciseCardHtml(draft, name) {
     : "";
 
   return `
-    <div class="exercise-card ${allLogged ? "complete" : ""} ${collapsed ? "collapsed" : ""}" data-exercise-card="${escapeAttr(name)}">
+    <div class="exercise-card ${typeChipClass} ${allFull ? "complete" : ""} ${partial ? "partial" : ""} ${collapsed ? "collapsed" : ""}" data-exercise-card="${escapeAttr(name)}">
       <div class="exercise-header">
         <div class="exercise-name">${name}</div>
         <div class="exercise-header-right">
@@ -409,6 +438,10 @@ function renderDay() {
       btn.addEventListener("click", onAddSetClick);
     });
 
+    dayPanel.querySelectorAll(".delete-set-btn").forEach((btn) => {
+      btn.addEventListener("click", onDeleteSetClick);
+    });
+
     dayPanel.querySelectorAll(".exercise-card:not(.run-card) > .exercise-header").forEach((header) => {
       header.addEventListener("click", onExerciseHeaderClick);
     });
@@ -437,6 +470,17 @@ function onAddSetClick(e) {
   const exerciseName = e.target.dataset.exercise;
   const draft = getDraft(currentDay);
   draft.exercises[exerciseName].push({ reps: "", weight: "" });
+  saveDrafts();
+  renderDay();
+}
+
+function onDeleteSetClick(e) {
+  const exerciseName = e.currentTarget.dataset.exercise;
+  const setIndex = Number(e.currentTarget.dataset.setIndex);
+  const draft = getDraft(currentDay);
+  const sets = draft.exercises[exerciseName];
+  if (!sets || sets.length <= MIN_SETS) return;
+  sets.splice(setIndex, 1);
   saveDrafts();
   renderDay();
 }
@@ -473,13 +517,16 @@ function onRunInputChange(e) {
 }
 
 function updateRowAndProgress(draft, exerciseName, row) {
+  const ex = exerciseDefFor(draft, exerciseName);
   const setState = draft.exercises[exerciseName];
-  const logged = setState[Number(row.dataset.setIndex)].reps !== "";
+  const logged = isSetFull(ex, setState[Number(row.dataset.setIndex)]);
   row.classList.toggle("logged", logged);
 
   const card = dayPanel.querySelector(`[data-exercise-card="${cssEscape(exerciseName)}"]`);
-  const allLogged = setState.every((s) => s.reps !== "");
-  card.classList.toggle("complete", allLogged);
+  const allFull = setState.every((s) => isSetFull(ex, s));
+  const anyTouched = setState.some((s) => isSetTouched(ex, s));
+  card.classList.toggle("complete", allFull);
+  card.classList.toggle("partial", anyTouched && !allFull);
 
   const names = activeExerciseNames(draft);
   let totalSets = 0;
@@ -557,12 +604,14 @@ function historyEntryHtml(entry, folders) {
     ? `${entry.day} — ${entry.type}${entry.abs ? " + Abs" : ""}${entry.run ? " + Run" : ""}`
     : entry.day;
 
+  const typeDotHtml = entry.type ? `<span class="type-dot type-chip-${typeSlug(entry.type)}"></span>` : "";
+
   const collapsed = !openHistoryEntries.has(entry.id);
 
   return `
     <div class="history-entry ${collapsed ? "collapsed" : ""}" data-entry-id="${entry.id}">
       <div class="history-entry-header">
-        <span class="history-entry-title"><span class="collapse-arrow">▾</span>${headerLabel}</span>
+        <span class="history-entry-title"><span class="collapse-arrow">▾</span>${typeDotHtml}${headerLabel}</span>
         <span class="h-date">${entry.date}</span>
       </div>
       <div class="history-entry-body">
