@@ -63,6 +63,27 @@ function typeSlug(name) {
   return WORKOUT_TYPE_SLUGS[name] || "";
 }
 
+const REST_X_ICON =
+  '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>';
+
+const WORKOUT_TYPE_ICONS = {
+  "Chest/Triceps": "images/ChestIcon.png",
+  "Back/Biceps": "images/BackIcon.png",
+  Legs: "images/LegsIcon.png",
+  "Shoulders & Legs": "images/Shoulders.png",
+  Rest: null,
+};
+
+const HERO_IMAGES = {
+  "Chest/Triceps": { main: "images/Chest2.png", badge: "images/Triceps.png" },
+  "Back/Biceps": { main: "images/Back.png", badge: "images/Bicep.jpg" },
+  Legs: { main: "images/LegsIcon.png" },
+  "Shoulders & Legs": { main: "images/Shoulders.png" },
+};
+
+const ABS_ICON = "images/Abs.png";
+const RUN_ICON = "images/RunningIcon.png";
+
 const ABS_BASE_NAME = "Abs Workout";
 const ABS_EXERCISE_DEF = { targetReps: "11-18", initialSets: 2 };
 
@@ -256,15 +277,19 @@ function populateDaySelect() {
 function renderSetupHtml(draft) {
   const typeButtonsHtml = WORKOUT_TYPE_NAMES.map((name) => {
     const selected = draft.type === name;
-    return `<button class="type-btn type-chip-${typeSlug(name)} ${selected ? "selected" : ""}" data-type="${escapeAttr(name)}">${name}</button>`;
+    const iconSrc = WORKOUT_TYPE_ICONS[name];
+    const iconHtml = iconSrc
+      ? `<img class="type-btn-icon" src="${iconSrc}" alt="" />`
+      : `<span class="type-btn-icon rest-x-icon" aria-hidden="true">${REST_X_ICON}</span>`;
+    return `<button class="type-btn type-chip-${typeSlug(name)} ${selected ? "selected" : ""}" data-type="${escapeAttr(name)}">${iconHtml}${name}</button>`;
   }).join("");
 
   return `
     <div class="workout-setup">
       <div class="type-picker">${typeButtonsHtml}</div>
       <div class="extra-toggles">
-        <label class="toggle-check"><input type="checkbox" id="abs-toggle" ${draft.abs ? "checked" : ""} /> Abs</label>
-        <label class="toggle-check"><input type="checkbox" id="run-toggle" ${draft.run ? "checked" : ""} /> Run/Jog</label>
+        <label class="toggle-check"><input type="checkbox" id="abs-toggle" ${draft.abs ? "checked" : ""} /><img class="toggle-icon" src="${ABS_ICON}" alt="" /> Abs</label>
+        <label class="toggle-check"><input type="checkbox" id="run-toggle" ${draft.run ? "checked" : ""} /><img class="toggle-icon" src="${RUN_ICON}" alt="" /> Run/Jog</label>
       </div>
       <div class="session-date-row">
         <label for="session-date-input">Session date</label>
@@ -370,6 +395,18 @@ function exerciseCardHtml(draft, name) {
   `;
 }
 
+function heroImageHtml(type) {
+  const hero = HERO_IMAGES[type];
+  if (!hero) return "";
+  const badgeHtml = hero.badge ? `<img class="hero-badge" src="${hero.badge}" alt="" />` : "";
+  return `
+    <div class="hero-image-wrap">
+      <img class="hero-image" src="${hero.main}" alt="${escapeAttr(type)}" />
+      ${badgeHtml}
+    </div>
+  `;
+}
+
 function runRowHtml(draft) {
   const fieldsHtml = RUN_FIELDS.map(
     (f) => `
@@ -422,8 +459,10 @@ function renderDay() {
     const addAbsBtnHtml = draft.abs ? `<button id="add-abs-btn" class="add-set-btn">+ Add Abs Exercise</button>` : "";
     const runHtml = draft.run ? runRowHtml(draft) : "";
     const finishEnabled = hasLoggedData(draft);
+    const heroHtml = heroImageHtml(draft.type);
 
     bodyHtml = `
+      ${heroHtml}
       ${
         totalSets > 0
           ? `<div class="progress-wrap">
