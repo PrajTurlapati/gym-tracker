@@ -78,7 +78,7 @@ const HERO_IMAGES = {
   "Chest/Triceps": { main: "images/Chest2.png", badge: "images/Triceps.png" },
   "Back/Biceps": { main: "images/Back.png", badge: "images/Bicep.jpg" },
   Legs: { main: "images/LegsIcon.png" },
-  "Shoulders & Legs": { main: "images/Shoulders.png" },
+  "Shoulders & Legs": { main: "images/Shoulders.png", badge: "images/LegsIcon.png" },
 };
 
 const ABS_ICON = "images/Abs.png";
@@ -111,9 +111,16 @@ let currentDay = todayName();
 let drafts = loadDrafts();
 let collapsedExerciseCards = new Set();
 let openHistoryEntries = new Set();
+let editingHistoryEntries = new Set();
 
 function todayName() {
   return DAY_NAMES[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
+}
+
+function dayNameForDate(isoDateStr) {
+  const [y, m, d] = isoDateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return DAY_NAMES[dt.getDay() === 0 ? 6 : dt.getDay() - 1];
 }
 
 function todayISODate() {
@@ -153,6 +160,10 @@ function loadHistory() {
     }
     if (h.folderId === undefined) {
       h.folderId = null;
+      migrated = true;
+    }
+    if (h.order === undefined) {
+      h.order = Date.parse(h.date) || 0;
       migrated = true;
     }
   });
@@ -615,8 +626,9 @@ function finishWorkout() {
   history.unshift({
     id: makeId(),
     folderId: null,
+    order: Date.now(),
     date: draft.date,
-    day: currentDay,
+    day: dayNameForDate(draft.date),
     type: draft.type,
     abs: draft.abs,
     run: draft.run,
@@ -632,7 +644,7 @@ function finishWorkout() {
   alert("Workout saved. Nice work.");
 }
 
-function historyEntryHtml(entry, folders) {
+function historyEntryViewHtml(entry, folders, isFirst, isLast) {
   const exercisesHtml = Object.entries(entry.exercises)
     .map(([name, sets]) => {
       const loggedSets = sets.filter((s) => s.reps !== "");
@@ -654,40 +666,125 @@ function historyEntryHtml(entry, folders) {
       .map((f) => `<option value="${f.id}" ${entry.folderId === f.id ? "selected" : ""}>${escapeAttr(f.name)}</option>`)
       .join("");
 
+  return `
+    ${exercisesHtml}
+    ${runHtml}
+    <div class="history-entry-controls">
+      <div class="history-move-controls">
+        <button class="ghost-btn small move-entry-btn" data-entry-id="${entry.id}" data-direction="up" ${isFirst ? "disabled" : ""} aria-label="Move up" title="Move up">▲</button>
+        <button class="ghost-btn small move-entry-btn" data-entry-id="${entry.id}" data-direction="down" ${isLast ? "disabled" : ""} aria-label="Move down" title="Move down">▼</button>
+      </div>
+      <select class="move-folder-select" data-entry-id="${entry.id}">${folderOptionsHtml}</select>
+      <button class="ghost-btn small edit-entry-btn" data-entry-id="${entry.id}">Edit</button>
+      <button class="ghost-btn small delete-entry-btn" data-entry-id="${entry.id}">Delete</button>
+    </div>
+  `;
+}
+
+function historyEntryEditHtml(entry) {
+  const exerciseRowsHtml = Object.entries(entry.exercises)
+    .map(([name, sets]) => {
+      const rows = sets
+        .map(
+          (s, i) => `
+            <div class="edit-set-row" data-exercise="${escapeAttr(name)}" data-set-index="${i}">
+              <div class="set-num">${i + 1}</div>
+              <input type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" data-field="reps" />
+              <input type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" data-field="weight" />
+            </div>
+          `
+        )
+        .join("");
+      return `<div class="edit-exercise"><div class="edit-exercise-name">${name}</div><div class="edit-set-rows">${rows}</div></div>`;
+    })
+    .join("");
+
+  const runEditHtml = entry.runData
+    ? `
+      <div class="edit-exercise">
+        <div class="edit-exercise-name">Run / Jog</div>
+        <div class="run-row">
+          ${RUN_FIELDS.map(
+            (f) => `
+              <div class="run-field">
+                <input type="number" inputmode="decimal" placeholder="${f.label}" value="${entry.runData[f.key] || ""}" data-run-field="${f.key}" step="${f.step}" min="${f.min}" ${f.max ? `max="${f.max}"` : ""} />
+                <div class="run-field-label">${f.label}</div>
+              </div>
+            `
+          ).join("")}
+        </div>
+      </div>
+    `
+    : "";
+
+  return `
+    <div class="edit-date-row">
+      <label for="edit-date-${entry.id}">Date</label>
+      <input type="date" id="edit-date-${entry.id}" class="date-input edit-date-input" value="${entry.date}" />
+    </div>
+    ${exerciseRowsHtml}
+    ${runEditHtml}
+    <div class="history-entry-controls">
+      <button class="ghost-btn small save-entry-btn" data-entry-id="${entry.id}">Save</button>
+      <button class="ghost-btn small cancel-entry-btn" data-entry-id="${entry.id}">Cancel</button>
+    </div>
+  `;
+}
+
+function historyEntryHtml(entry, folders, isFirst, isLast) {
+  const editing = editingHistoryEntries.has(entry.id);
+
   const headerLabel = entry.type
     ? `${entry.day} — ${entry.type}${entry.abs ? " + Abs" : ""}${entry.run ? " + Run" : ""}`
     : entry.day;
 
   const typeDotHtml = entry.type ? `<span class="type-dot type-chip-${typeSlug(entry.type)}"></span>` : "";
 
-  const collapsed = !openHistoryEntries.has(entry.id);
+  const collapsed = !editing && !openHistoryEntries.has(entry.id);
+
+  const bodyHtml = editing
+    ? historyEntryEditHtml(entry)
+    : historyEntryViewHtml(entry, folders, isFirst, isLast);
 
   return `
-    <div class="history-entry ${collapsed ? "collapsed" : ""}" data-entry-id="${entry.id}">
+    <div class="history-entry ${collapsed ? "collapsed" : ""} ${editing ? "editing" : ""}" data-entry-id="${entry.id}">
       <div class="history-entry-header">
         <span class="history-entry-title"><span class="collapse-arrow">▾</span>${typeDotHtml}${headerLabel}</span>
         <span class="h-date">${entry.date}</span>
       </div>
       <div class="history-entry-body">
-        ${exercisesHtml}
-        ${runHtml}
-        <div class="history-entry-controls">
-          <select class="move-folder-select" data-entry-id="${entry.id}">${folderOptionsHtml}</select>
-          <button class="ghost-btn small delete-entry-btn" data-entry-id="${entry.id}">Delete</button>
-        </div>
+        ${bodyHtml}
       </div>
     </div>
   `;
 }
 
+function moveHistoryEntry(entryId, direction) {
+  const history = loadHistory();
+  const entry = history.find((h) => h.id === entryId);
+  if (!entry) return;
+  const siblings = history
+    .filter((h) => h.folderId === entry.folderId)
+    .sort((a, b) => (b.order || 0) - (a.order || 0));
+  const idx = siblings.findIndex((h) => h.id === entryId);
+  const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= siblings.length) return;
+  const other = siblings[swapIdx];
+  const tmp = entry.order;
+  entry.order = other.order;
+  other.order = tmp;
+  saveHistory(history);
+  renderHistory();
+}
+
 function renderHistory() {
   const history = loadHistory();
   const folders = loadFolders();
-  const byDateDesc = (a, b) => (b.date || "").localeCompare(a.date || "");
+  const byOrderDesc = (a, b) => (b.order || 0) - (a.order || 0);
 
   const folderSectionsHtml = folders
     .map((f) => {
-      const entries = history.filter((h) => h.folderId === f.id).sort(byDateDesc);
+      const entries = history.filter((h) => h.folderId === f.id).sort(byOrderDesc);
       return `
         <div class="folder-section">
           <div class="folder-header" data-folder-id="${f.id}">
@@ -700,17 +797,17 @@ function renderHistory() {
               <button class="ghost-btn small delete-folder-btn" data-folder-id="${f.id}">Delete</button>
             </div>
           </div>
-          ${entries.length ? entries.map((e) => historyEntryHtml(e, folders)).join("") : `<div class="empty-state small">No sessions moved here yet.</div>`}
+          ${entries.length ? entries.map((e, i) => historyEntryHtml(e, folders, i === 0, i === entries.length - 1)).join("") : `<div class="empty-state small">No sessions moved here yet.</div>`}
         </div>
       `;
     })
     .join("");
 
-  const unsorted = history.filter((h) => !h.folderId).sort(byDateDesc);
+  const unsorted = history.filter((h) => !h.folderId).sort(byOrderDesc);
   const unsortedHtml = `
     <div class="folder-section">
       <div class="folder-header"><span class="folder-name-view"><span class="folder-name">Unsorted</span></span></div>
-      ${unsorted.length ? unsorted.map((e) => historyEntryHtml(e, folders)).join("") : `<div class="empty-state small">Nothing unsorted.</div>`}
+      ${unsorted.length ? unsorted.map((e, i) => historyEntryHtml(e, folders, i === 0, i === unsorted.length - 1)).join("") : `<div class="empty-state small">Nothing unsorted.</div>`}
     </div>
   `;
 
@@ -725,6 +822,7 @@ function renderHistory() {
     header.addEventListener("click", () => {
       const entry = header.closest(".history-entry");
       const id = entry.dataset.entryId;
+      if (editingHistoryEntries.has(id)) return;
       const nowCollapsed = entry.classList.toggle("collapsed");
       if (nowCollapsed) openHistoryEntries.delete(id);
       else openHistoryEntries.add(id);
@@ -752,6 +850,63 @@ function renderHistory() {
       const h = loadHistory().filter((x) => x.id !== entryId);
       saveHistory(h);
       renderHistory();
+    });
+  });
+
+  historyList.querySelectorAll(".edit-entry-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const entryId = e.target.dataset.entryId;
+      editingHistoryEntries.add(entryId);
+      openHistoryEntries.add(entryId);
+      renderHistory();
+    });
+  });
+
+  historyList.querySelectorAll(".cancel-entry-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      editingHistoryEntries.delete(e.target.dataset.entryId);
+      renderHistory();
+    });
+  });
+
+  historyList.querySelectorAll(".save-entry-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const entryId = e.target.dataset.entryId;
+      const entryEl = e.target.closest(".history-entry");
+      const h = loadHistory();
+      const entry = h.find((x) => x.id === entryId);
+      if (!entry) return;
+
+      const dateInput = entryEl.querySelector(".edit-date-input");
+      if (dateInput && dateInput.value) {
+        entry.date = dateInput.value;
+        entry.day = dayNameForDate(dateInput.value);
+      }
+
+      entryEl.querySelectorAll(".edit-set-row").forEach((row) => {
+        const exerciseName = row.dataset.exercise;
+        const setIndex = Number(row.dataset.setIndex);
+        const set = entry.exercises[exerciseName] && entry.exercises[exerciseName][setIndex];
+        if (!set) return;
+        set.reps = row.querySelector('input[data-field="reps"]').value;
+        set.weight = row.querySelector('input[data-field="weight"]').value;
+      });
+
+      if (entry.runData) {
+        entryEl.querySelectorAll("[data-run-field]").forEach((input) => {
+          entry.runData[input.dataset.runField] = input.value;
+        });
+      }
+
+      saveHistory(h);
+      editingHistoryEntries.delete(entryId);
+      renderHistory();
+    });
+  });
+
+  historyList.querySelectorAll(".move-entry-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      moveHistoryEntry(e.currentTarget.dataset.entryId, e.currentTarget.dataset.direction);
     });
   });
 
